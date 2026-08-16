@@ -7,21 +7,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "dcb49cec63eb47596b2d5b4a4496cd7cd159e984f6dc02a057be410183dbe4d8",
-        "size": 14234792,
-        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.8-alpha/CAMIDAX-Setup-x64.exe"
+        "sha256": "06fd1d57b7d3c457ba3d010c9f31bf8f06853bccd52b22531b421ddf2db5df8a",
+        "size": 14237089,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.9-alpha/CAMIDAX-Setup-x64.exe"
       }
     ],
     "channel": "alpha",
     "mandatory": false,
     "minimum_version": null,
-    "notes": "CAMIDAX clean UTF-8 frontend and updater certification.",
-    "version": "0.0.8-alpha"
+    "notes": "CAMIDAX UTF-8 Control Center HTTP response and updater certification.",
+    "version": "0.0.9-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "/Y/t/eSO2xZvWhc2OkfHv384Tz2yHgwC6/9lvQByhMJ5BQHk4yXmAqTjdg9PEZ68GhYfHWe0pUj/vY0PJk8WDA=="
+    "signature": "fbLl458xu6+l2zsoT8BO5wGQi7jg57NLphrug2SuVo9EvbwtIyIudRkdOqrfyAQ1UKFV9mtnUbdg6QUj2yxsCg=="
   }
 }
