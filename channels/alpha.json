@@ -7,21 +7,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "06fd1d57b7d3c457ba3d010c9f31bf8f06853bccd52b22531b421ddf2db5df8a",
-        "size": 14237089,
-        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.9-alpha/CAMIDAX-Setup-x64.exe"
+        "sha256": "8814dc7a357b6b5a509e59ce78d988910d969d2820a9338874ca0033ac6b7aee",
+        "size": 14237729,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.10-alpha/CAMIDAX-Setup-x64.exe"
       }
     ],
     "channel": "alpha",
     "mandatory": false,
     "minimum_version": null,
-    "notes": "CAMIDAX UTF-8 Control Center HTTP response and updater certification.",
-    "version": "0.0.9-alpha"
+    "notes": "CAMIDAX PC4 remote updater certification.",
+    "version": "0.0.10-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "fbLl458xu6+l2zsoT8BO5wGQi7jg57NLphrug2SuVo9EvbwtIyIudRkdOqrfyAQ1UKFV9mtnUbdg6QUj2yxsCg=="
+    "signature": "e0fOvVOkTMuvjFr+uleG/3VqcbRqqrSdmW+EJzu4vSIb+XlgN+Xui7cFKT0hM9Zwl9ctABOmjZaMN6bfkh3CDQ=="
   }
 }
