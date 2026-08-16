@@ -13,15 +13,15 @@
       }
     ],
     "channel": "alpha",
-    "mandatory": false,
+    "mandatory": true,
     "minimum_version": null,
-    "notes": "CAMIDAX normal global updater decision-flow certification.",
+    "notes": "Mandatory updater UI bootstrap certification release.",
     "version": "0.0.5-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "BdcGhT2KwH7JPGQkNPq4ZSrC21p+X4jKFwdIinHPyKldBYb2D3/uZsE066361tyLgAuQ9Bkflir3uz2WbRGAAQ=="
+    "signature": "eAXkrtAA8VtwGYCT23jw6xjw2iOo+93HkCEwIexnF6c8DlVcmYgSmlW952dq8jskWv9+57DI4QNHovye8alGBQ=="
   }
 }
