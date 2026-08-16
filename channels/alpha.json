@@ -7,21 +7,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "19066691aade38bab1f2a618047b05b77c51f1ec4186e503cb558caa0f3136a1",
-        "size": 14236658,
-        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.4-alpha/CAMIDAX-Setup-x64.exe"
+        "sha256": "76b1f55c8d2b7a67ea4b107c62cff0c4bc1148bcedf9555915ede5d7f37962c2",
+        "size": 14232663,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.5-alpha/CAMIDAX-Setup-x64.exe"
       }
     ],
     "channel": "alpha",
-    "mandatory": true,
+    "mandatory": false,
     "minimum_version": null,
-    "notes": "Mandatory global updater bootstrap certification release.",
-    "version": "0.0.4-alpha"
+    "notes": "CAMIDAX normal global updater decision-flow certification.",
+    "version": "0.0.5-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "D+oFAEKz7cdfh+lwAP7dZ5M+pyH5ktDvzDEzmO5DTLH2djjniaV6v5YvNjkC+ZLuNSGKgWq7v3U/kk4arafODg=="
+    "signature": "BdcGhT2KwH7JPGQkNPq4ZSrC21p+X4jKFwdIinHPyKldBYb2D3/uZsE066361tyLgAuQ9Bkflir3uz2WbRGAAQ=="
   }
 }
