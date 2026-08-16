@@ -7,21 +7,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "76b1f55c8d2b7a67ea4b107c62cff0c4bc1148bcedf9555915ede5d7f37962c2",
-        "size": 14232663,
-        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.5-alpha/CAMIDAX-Setup-x64.exe"
+        "sha256": "b57232cc93802442e44d7fce0e4f19d24e218001fad535d4b74cfa0f7f2d87eb",
+        "size": 14237028,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.6-alpha/CAMIDAX-Setup-x64.exe"
       }
     ],
     "channel": "alpha",
-    "mandatory": true,
+    "mandatory": false,
     "minimum_version": null,
-    "notes": "Mandatory updater UI bootstrap certification release.",
-    "version": "0.0.5-alpha"
+    "notes": "Final CAMIDAX updater certification release.",
+    "version": "0.0.6-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "eAXkrtAA8VtwGYCT23jw6xjw2iOo+93HkCEwIexnF6c8DlVcmYgSmlW952dq8jskWv9+57DI4QNHovye8alGBQ=="
+    "signature": "pVKhSKPPsve23unA7KEdHon3dKCy7+I61LbteK8DO6PwV2V26yUy8xwqPdme61TsM5z9NwKjIt1FIS9z80tvCw=="
   }
 }
