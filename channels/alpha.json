@@ -7,21 +7,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "b57232cc93802442e44d7fce0e4f19d24e218001fad535d4b74cfa0f7f2d87eb",
-        "size": 14237028,
-        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.6-alpha/CAMIDAX-Setup-x64.exe"
+        "sha256": "2261862ea8f135b16d829fa4e725b4573cc3b71de7c81ebcee03ae4724bf4542",
+        "size": 14234623,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.7-alpha/CAMIDAX-Setup-x64.exe"
       }
     ],
     "channel": "alpha",
     "mandatory": false,
     "minimum_version": null,
-    "notes": "Final CAMIDAX updater certification release.",
-    "version": "0.0.6-alpha"
+    "notes": "CAMIDAX updater cache-busting and automatic install certification.",
+    "version": "0.0.7-alpha"
   },
   "schema": "camidax.release.v1",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "pVKhSKPPsve23unA7KEdHon3dKCy7+I61LbteK8DO6PwV2V26yUy8xwqPdme61TsM5z9NwKjIt1FIS9z80tvCw=="
+    "signature": "XQ+0BTR7kam/olC3Rq+axIHjzrwBZWDOaCvTA6qc25Pdm1pHVBJcSGvbDmVOP65RRoUthq6PGq7jRNWx1KBJDA=="
   }
 }
