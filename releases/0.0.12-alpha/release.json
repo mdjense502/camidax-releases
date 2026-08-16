@@ -1,0 +1,30 @@
+{
+  "control": {
+    "rollout_required": true
+  },
+  "release": {
+    "artifacts": [
+      {
+        "apply_mode": "native_installer",
+        "architecture": "x64",
+        "kind": "full",
+        "package_id": "",
+        "platform": "windows",
+        "sha256": "4a730649b828a8182b292b410ac13e730566e43495c3a8f214fd185cee9f7189",
+        "size": 13713549,
+        "url": "https://raw.githubusercontent.com/mdjense502/camidax-releases/main/releases/0.0.12-alpha/CAMIDAX-Setup-x64.exe"
+      }
+    ],
+    "channel": "alpha",
+    "mandatory": false,
+    "minimum_version": null,
+    "notes": "CAMIDAX 0.0.12-alpha staged rollout certification",
+    "version": "0.0.12-alpha"
+  },
+  "schema": "camidax.release.v2",
+  "signing": {
+    "algorithm": "ed25519",
+    "key_id": "ed25519:a6e4e67adf1ca61254366505",
+    "signature": "xIdaBDc5u5cCofkH58WvkjhUKkJce4hIVxf2+pjlGsgXECJ5ryD9R9qNiNxQTTJRTW+wDApE71X5g/2icjZsBw=="
+  }
+}
