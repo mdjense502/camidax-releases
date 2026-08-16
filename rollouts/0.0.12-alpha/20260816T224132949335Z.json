@@ -1,0 +1,15 @@
+{
+  "policy": {
+    "paused": true,
+    "percentage": 100.0,
+    "release_version": "0.0.12-alpha",
+    "revoked": false,
+    "rollout_id": "alpha-0.0.12-alpha"
+  },
+  "schema": "camidax.rollout.v1",
+  "signing": {
+    "algorithm": "ed25519",
+    "key_id": "ed25519:a6e4e67adf1ca61254366505",
+    "signature": "eKfm4FmFXw7o5++fSnXQYbFWbQkpcqJeiSw54hZVjEzumc44AY/J8lBkjv85y2by9WV9O1plcBGI+nWWTlFlDQ=="
+  }
+}
