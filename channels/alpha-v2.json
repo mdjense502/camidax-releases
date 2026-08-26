@@ -10,21 +10,21 @@
         "kind": "full",
         "package_id": "",
         "platform": "windows",
-        "sha256": "601909ce90e3f32397f259fb47524552ebbf0314c8d744f398ade230a051d301",
-        "size": 296242541,
-        "url": "https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.21/CAMIDAX-Setup-x64.exe"
+        "sha256": "6ab35829fbd291af586e28356b9390e8ce2fbccf1cf7525bd9084dd488575ff2",
+        "size": 325474929,
+        "url": "https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.22/CAMIDAX-Setup-x64.exe"
       }
     ],
-    "channel": "alpha",
+    "channel": "stable",
     "mandatory": false,
     "minimum_version": null,
-    "notes": "Physical updater qualification release.",
-    "version": "0.0.21"
+    "notes": "Automatic signed updates, background installation, unified navigation, and visual reconciliation.",
+    "version": "0.0.22"
   },
   "schema": "camidax.release.v2",
   "signing": {
     "algorithm": "ed25519",
     "key_id": "ed25519:a6e4e67adf1ca61254366505",
-    "signature": "02skqXsLNSHyGndXOiTAdpirpt1iHOH6mQoHRZiVzxhaE/iweldvxqYkfP6wR6DiecvP+RzZYg4SPXHqRVSPAw=="
+    "signature": "1tW5t9518vjxdECyfAcjMQHJFg9CUtjDgfRXPK9TOBqzE7r8jz207HoYl1FeTvz3411Rcmi+uTbYeSq79Q28Bw=="
   }
 }
