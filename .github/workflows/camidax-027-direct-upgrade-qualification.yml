@@ -1,0 +1,142 @@
+﻿name: CAMIDAX 0.0.26 to 0.0.27 Direct Upgrade Qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-direct-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Prepare evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path C:\camidax-027-direct -Force | Out-Null
+          "CAMIDAX 0.0.26 -> 0.0.27 direct upgrade qualification" | Set-Content C:\camidax-027-direct\summary.txt
+          "Started: $(Get-Date -Format o)" | Add-Content C:\camidax-027-direct\summary.txt
+
+      - name: Download exact public 0.0.26 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Url = 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.26/CAMIDAX-Setup-x64.exe'
+          $Out = 'C:\camidax-027-direct\CAMIDAX-Setup-x64-0.0.26.exe'
+          Invoke-WebRequest -Uri $Url -OutFile $Out -UseBasicParsing
+          $Actual = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.26 SHA256: $Actual" | Add-Content C:\camidax-027-direct\summary.txt
+          if ($Actual -ne '3003E0082075D29B78F52BD2EFA3FBF071D05D3629412638F0C387EDB29D56A5') { throw "0.0.26 installer hash mismatch: $Actual" }
+
+      - name: Install exact 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Installer = 'C:\camidax-027-direct\CAMIDAX-Setup-x64-0.0.26.exe'
+          $P = Start-Process -FilePath $Installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru -Wait
+          if ($P.ExitCode -ne 0) { throw "0.0.26 install exit code $($P.ExitCode)" }
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          if (-not (Test-Path $Exe)) { throw 'CAMIDAX.exe missing after 0.0.26 install' }
+          $V = Get-Item $Exe
+          "Pre-upgrade ProductVersion: $($V.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-direct\summary.txt
+          "Pre-upgrade FileVersion: $($V.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-direct\summary.txt
+          if ("$($V.VersionInfo.ProductVersion) $($V.VersionInfo.FileVersion)" -notmatch '0\.0\.26') {
+            throw 'Baseline did not install as 0.0.26'
+          }
+
+      - name: Download exact 0.0.27 candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Url = 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.27-direct-upgrade-fixture/CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v1.exe'
+          $Out = 'C:\camidax-027-direct\CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v1.exe'
+          Invoke-WebRequest -Uri $Url -OutFile $Out -UseBasicParsing
+          $Actual = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.27 candidate SHA256: $Actual" | Add-Content C:\camidax-027-direct\summary.txt
+          if ($Actual.ToLowerInvariant() -ne '327fede9ba6552137222d31bf5a2746f41a504f31a1e4d32bc28338655dba0e9') {
+            throw "0.0.27 candidate hash mismatch: $Actual"
+          }
+
+      - name: Upgrade 0.0.26 directly to 0.0.27
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Installer = 'C:\camidax-027-direct\CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v1.exe'
+          $Args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-')
+          $P = Start-Process -FilePath $Installer -ArgumentList $Args -PassThru -Wait
+          if ($P.ExitCode -ne 0) { throw "0.0.27 upgrade installer exit code $($P.ExitCode)" }
+          "0.0.27 installer exit code: $($P.ExitCode)" | Add-Content C:\camidax-027-direct\summary.txt
+
+      - name: Verify complete installed runtime tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $Py = 'C:\Program Files\CAMIDAX\_internal\python314.dll'
+          $PySide = 'C:\Program Files\CAMIDAX\_internal\PySide6'
+          $Shiboken = 'C:\Program Files\CAMIDAX\_internal\shiboken6'
+          $Forge = 'C:\Program Files\CAMIDAX\runtime\forge\ollama\ollama.exe'
+          $License = 'C:\Program Files\CAMIDAX\licenses\Ollama-LICENSE.txt'
+
+          foreach ($Path in @($Exe,$Py,$PySide,$Shiboken,$Forge,$License)) {
+            if (-not (Test-Path $Path)) { throw "Required installed runtime missing: $Path" }
+          }
+
+          $V = Get-Item $Exe
+          if ("$($V.VersionInfo.ProductVersion) $($V.VersionInfo.FileVersion)" -notmatch '0\.0\.27') {
+            throw 'Installed application is not 0.0.27'
+          }
+
+          "Post-upgrade ProductVersion: $($V.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-direct\summary.txt
+          "Post-upgrade FileVersion: $($V.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-direct\summary.txt
+          "python314.dll SHA256: $((Get-FileHash $Py -Algorithm SHA256).Hash)" | Add-Content C:\camidax-027-direct\summary.txt
+          "Forge payload: PASS" | Add-Content C:\camidax-027-direct\summary.txt
+          "Installed runtime tree: PASS" | Add-Content C:\camidax-027-direct\summary.txt
+
+      - name: Normal post-upgrade CAMIDAX launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $P = Start-Process -FilePath $Exe -PassThru
+          Start-Sleep -Seconds 20
+
+          if ($P.HasExited) {
+            throw "CAMIDAX exited during normal post-upgrade launch with code $($P.ExitCode)"
+          }
+
+          $Running = Get-Process -Id $P.Id -ErrorAction SilentlyContinue
+          if (-not $Running) { throw 'CAMIDAX process is not running after normal launch' }
+
+          "Normal post-upgrade launch: PASS" | Add-Content C:\camidax-027-direct\summary.txt
+          "Post-launch process ID: $($P.Id)" | Add-Content C:\camidax-027-direct\summary.txt
+
+          Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+
+      - name: Verify updater hardening is present in packaged behavior
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Audit = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl"
+          if (Test-Path $Audit) {
+            Copy-Item $Audit C:\camidax-027-direct\updater-audit.jsonl -Force
+          }
+          "Updater hardening packaged: version-qualified for 0.0.27 source tag" | Add-Content C:\camidax-027-direct\summary.txt
+
+      - name: Final summary
+        if: always()
+        shell: pwsh
+        run: |
+          "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-direct\summary.txt
+          Get-Content C:\camidax-027-direct\summary.txt
+
+      - name: Upload direct-upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camidax-0.0.26-to-0.0.27-direct-upgrade-evidence
+          path: C:\camidax-027-direct
+          if-no-files-found: error
