@@ -60,47 +60,60 @@ jobs:
           }
           "Updater entry-point exit code: $($P.ExitCode)" | Add-Content C:\camidax-qualification\summary.txt
 
-      - name: Wait for updater handoff and verify 0.0.26
+      - name: Wait for complete updater handoff and verify 0.0.26
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
-          $Deadline = (Get-Date).AddMinutes(25)
-          $Reached = $false
+          $Engine = 'C:\Program Files\CAMIDAX\runtime\forge\ollama\ollama.exe'
+          $License = 'C:\Program Files\CAMIDAX\licenses\Ollama-LICENSE.txt'
+          $Deadline = (Get-Date).AddMinutes(30)
+          $Complete = $false
+
           do {
             Start-Sleep -Seconds 10
+
+            $VersionReady = $false
             if (Test-Path $Exe) {
               try {
                 $Item = Get-Item $Exe
                 $VersionText = "$($Item.VersionInfo.ProductVersion) $($Item.VersionInfo.FileVersion)"
                 Write-Host "Current installed version: $VersionText"
-                if ($VersionText -match '0\.0\.26') {
-                  $Reached = $true
-                  break
-                }
+                $VersionReady = $VersionText -match '0\.0\.26'
               } catch {
-                Write-Host "Install handoff in progress: $($_.Exception.Message)"
+                Write-Host "Version read unavailable during install handoff: $($_.Exception.Message)"
               }
+            }
+
+            $EngineReady = (Test-Path $Engine) -and (Test-Path $License)
+
+            $UpdaterProcesses = @(
+              Get-Process -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.ProcessName -like 'camidax-update-*' -or
+                $_.ProcessName -eq 'CAMIDAX-Setup-x64'
+              }
+            )
+
+            Write-Host "VersionReady=$VersionReady EngineReady=$EngineReady UpdaterProcesses=$($UpdaterProcesses.Count)"
+
+            if ($VersionReady -and $EngineReady -and $UpdaterProcesses.Count -eq 0) {
+              $Complete = $true
+              break
             }
           } while ((Get-Date) -lt $Deadline)
 
-          if (-not $Reached) { throw 'Installed CAMIDAX did not become 0.0.26 within 25 minutes' }
+          if (-not $Complete) {
+            throw 'CAMIDAX updater handoff did not fully complete within 30 minutes'
+          }
 
           $Final = Get-Item $Exe
           "Post-update ProductVersion: $($Final.VersionInfo.ProductVersion)" | Add-Content C:\camidax-qualification\summary.txt
           "Post-update FileVersion: $($Final.VersionInfo.FileVersion)" | Add-Content C:\camidax-qualification\summary.txt
           "Post-update CAMIDAX.exe SHA256: $((Get-FileHash $Exe -Algorithm SHA256).Hash)" | Add-Content C:\camidax-qualification\summary.txt
-
-      - name: Verify Forge Local Engine payload
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $Engine = 'C:\Program Files\CAMIDAX\runtime\forge\ollama\ollama.exe'
-          $License = 'C:\Program Files\CAMIDAX\licenses\Ollama-LICENSE.txt'
-          if (-not (Test-Path $Engine)) { throw 'Forge Local Engine runtime missing after update' }
-          if (-not (Test-Path $License)) { throw 'Forge Local Engine license missing after update' }
           "Forge Local Engine payload: PASS" | Add-Content C:\camidax-qualification\summary.txt
           "Forge engine SHA256: $((Get-FileHash $Engine -Algorithm SHA256).Hash)" | Add-Content C:\camidax-qualification\summary.txt
+          "Updater handoff complete: PASS" | Add-Content C:\camidax-qualification\summary.txt
 
       - name: Collect updater evidence
         if: always()
