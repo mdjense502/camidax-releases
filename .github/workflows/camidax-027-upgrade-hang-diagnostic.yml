@@ -1,0 +1,133 @@
+﻿name: CAMIDAX 0.0.27 Upgrade Hang Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Prepare
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path C:\camidax-027-diag -Force | Out-Null
+          New-Item -ItemType Directory -Path C:\camidax-027-input -Force | Out-Null
+          "Started: $(Get-Date -Format o)" | Set-Content C:\camidax-027-diag\summary.txt
+
+      - name: Download exact installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $I26 = 'C:\camidax-027-input\CAMIDAX-0.0.26.exe'
+          $I27 = 'C:\camidax-027-input\CAMIDAX-0.0.27.exe'
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.26/CAMIDAX-Setup-x64.exe' -OutFile $I26 -UseBasicParsing
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.27-direct-upgrade-fixture/CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v1.exe' -OutFile $I27 -UseBasicParsing
+          $H26 = (Get-FileHash $I26 -Algorithm SHA256).Hash
+          $H27 = (Get-FileHash $I27 -Algorithm SHA256).Hash
+          "0.0.26 SHA256: $H26" | Add-Content C:\camidax-027-diag\summary.txt
+          "0.0.27 SHA256: $H27" | Add-Content C:\camidax-027-diag\summary.txt
+          if ($H26 -ne '3003E0082075D29B78F52BD2EFA3FBF071D05D3629412638F0C387EDB29D56A5') { throw '0.0.26 hash mismatch' }
+          if ($H27 -ne '327FEDE9BA6552137222D31BF5A2746F41A504F31A1E4D32BC28338655DBA0E9') { throw '0.0.27 hash mismatch' }
+
+      - name: Install 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $P = Start-Process -FilePath 'C:\camidax-027-input\CAMIDAX-0.0.26.exe' -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/LOG="C:\camidax-027-diag\install-026.log"') -PassThru -Wait
+          if ($P.ExitCode -ne 0) { throw "0.0.26 install failed: $($P.ExitCode)" }
+          $Exe='C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          if (-not (Test-Path $Exe)) { throw '0.0.26 CAMIDAX.exe missing' }
+
+      - name: Diagnose 0.0.27 upgrade
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Installer='C:\camidax-027-input\CAMIDAX-0.0.27.exe'
+          $Log='C:\camidax-027-diag\upgrade-027.log'
+          $Timeline='C:\camidax-027-diag\upgrade-timeline.txt'
+          $Root='C:\Program Files\CAMIDAX'
+          $P = Start-Process -FilePath $Installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG="$Log"") -PassThru
+          "Outer PID: $($P.Id)" | Set-Content $Timeline
+
+          $Done=$false
+          for ($i=1; $i -le 48; $i++) {
+            Start-Sleep -Seconds 15
+            $P.Refresh()
+            "
+===== SAMPLE $i $(Get-Date -Format o) =====" | Add-Content $Timeline
+            "Outer HasExited=$($P.HasExited)" | Add-Content $Timeline
+
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.Name -match 'CAMIDAX|setup|ollama' } |
+              Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine |
+              Format-Table -Wrap -AutoSize | Out-String | Add-Content $Timeline
+
+            if (Test-Path $Root) {
+              $Files=@(Get-ChildItem $Root -File -Recurse -ErrorAction SilentlyContinue)
+              $Bytes=($Files | Measure-Object Length -Sum).Sum
+              "InstalledFileCount=$($Files.Count) InstalledBytes=$Bytes" | Add-Content $Timeline
+              foreach ($Rel in @('CAMIDAX.exe','_internal\python314.dll','_internal\PySide6','_internal\shiboken6','runtime\forge\ollama\ollama.exe')) {
+                "$Rel => $(Test-Path (Join-Path $Root $Rel))" | Add-Content $Timeline
+              }
+            }
+
+            if (Test-Path $Log) {
+              "--- LAST 40 INNO LOG LINES ---" | Add-Content $Timeline
+              Get-Content $Log -Tail 40 -ErrorAction SilentlyContinue | Add-Content $Timeline
+            }
+
+            if ($P.HasExited) {
+              $Done=$true
+              "InstallerExitCode=$($P.ExitCode)" | Add-Content $Timeline
+              break
+            }
+          }
+
+          if (-not $Done) {
+            "HANG CONFIRMED after 12 minutes." | Add-Content $Timeline
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.Name -match 'CAMIDAX-0.0.27|CAMIDAX-Setup|setup.*tmp' } |
+              ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }
+            throw '0.0.27 upgrade hang reproduced'
+          }
+
+          if ($P.ExitCode -ne 0) { throw "0.0.27 installer returned $($P.ExitCode)" }
+
+      - name: Capture final state
+        if: always()
+        shell: pwsh
+        run: |
+          $Root='C:\Program Files\CAMIDAX'
+          $Out='C:\camidax-027-diag\final-state.txt'
+          "Captured: $(Get-Date -Format o)" | Set-Content $Out
+          if (Test-Path $Root) {
+            foreach ($Rel in @('CAMIDAX.exe','_internal\python314.dll','_internal\PySide6','_internal\shiboken6','runtime\forge\ollama\ollama.exe','licenses\Ollama-LICENSE.txt')) {
+              "$Rel => $(Test-Path (Join-Path $Root $Rel))" | Add-Content $Out
+            }
+            $Exe=Join-Path $Root 'CAMIDAX.exe'
+            if (Test-Path $Exe) {
+              $V=Get-Item $Exe
+              "ProductVersion=$($V.VersionInfo.ProductVersion)" | Add-Content $Out
+              "FileVersion=$($V.VersionInfo.FileVersion)" | Add-Content $Out
+            }
+          }
+          Get-CimInstance Win32_Process |
+            Where-Object { $_.Name -match 'CAMIDAX|setup|ollama' } |
+            Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine |
+            Format-List | Out-String | Set-Content C:\camidax-027-diag\processes-final.txt
+          "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-diag\summary.txt
+          Get-Content C:\camidax-027-diag\summary.txt
+
+      - name: Upload diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camidax-0.0.27-upgrade-hang-diagnostic
+          path: C:\camidax-027-diag
+          if-no-files-found: error
+          retention-days: 7
