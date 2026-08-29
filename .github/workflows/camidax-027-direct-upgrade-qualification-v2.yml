@@ -1,0 +1,173 @@
+name: CAMIDAX 0.0.26 to 0.0.27 Direct Upgrade Qualification v2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Prepare evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path C:\camidax-027-v2 -Force | Out-Null
+          New-Item -ItemType Directory -Path C:\camidax-027-v2-input -Force | Out-Null
+          "CAMIDAX 0.0.26 -> 0.0.27 candidate v2 qualification" | Set-Content C:\camidax-027-v2\summary.txt
+          "Started: $(Get-Date -Format o)" | Add-Content C:\camidax-027-v2\summary.txt
+
+      - name: Download exact 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Out = 'C:\camidax-027-v2-input\CAMIDAX-0.0.26.exe'
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.26/CAMIDAX-Setup-x64.exe' -OutFile $Out -UseBasicParsing
+          $Hash = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.26 SHA256: $Hash" | Add-Content C:\camidax-027-v2\summary.txt
+          if ($Hash -ne '3003E0082075D29B78F52BD2EFA3FBF071D05D3629412638F0C387EDB29D56A5') { throw "0.0.26 hash mismatch" }
+
+      - name: Install exact 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Log = 'C:\camidax-027-v2\install-026.log'
+          $P = Start-Process -FilePath 'C:\camidax-027-v2-input\CAMIDAX-0.0.26.exe' 
+            -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LOG="' + $Log + '"')) 
+            -PassThru -Wait
+
+          if ($P.ExitCode -ne 0) { throw "0.0.26 install failed with $($P.ExitCode)" }
+
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          if (-not (Test-Path $Exe)) { throw "0.0.26 CAMIDAX.exe missing" }
+
+          $V = Get-Item $Exe
+          "Baseline ProductVersion: $($V.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-v2\summary.txt
+          "Baseline FileVersion: $($V.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-v2\summary.txt
+
+          if ("$($V.VersionInfo.ProductVersion) $($V.VersionInfo.FileVersion)" -notmatch '0\.0\.26') {
+            throw "Baseline did not install as 0.0.26"
+          }
+
+      - name: Download exact 0.0.27 candidate v2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Out = 'C:\camidax-027-v2-input\CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v2.exe'
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.27-direct-upgrade-fixture/CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v2.exe' -OutFile $Out -UseBasicParsing
+          $Hash = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.27 v2 SHA256: $Hash" | Add-Content C:\camidax-027-v2\summary.txt
+          if ($Hash.ToLowerInvariant() -ne '7ef861922390a3224bf53f25b4b3446c3592b31fafe8d895a84fb55c5fe3561e') {
+            throw "Candidate v2 hash mismatch: $Hash"
+          }
+
+      - name: Upgrade 0.0.26 directly to 0.0.27 v2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Installer = 'C:\camidax-027-v2-input\CAMIDAX-Setup-x64-0.0.27-CANDIDATE-v2.exe'
+          $Log = 'C:\camidax-027-v2\upgrade-027-v2.log'
+
+          $P = Start-Process -FilePath $Installer 
+            -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LOG="' + $Log + '"')) 
+            -PassThru
+
+          if (-not $P.WaitForExit(600000)) {
+            Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+            throw "0.0.27 candidate v2 installer exceeded 10-minute qualification limit"
+          }
+
+          "0.0.27 v2 installer exit code: $($P.ExitCode)" | Add-Content C:\camidax-027-v2\summary.txt
+          if ($P.ExitCode -ne 0) {
+            throw "0.0.27 candidate v2 upgrade returned $($P.ExitCode)"
+          }
+
+      - name: Verify complete installed runtime tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $Root = 'C:\Program Files\CAMIDAX'
+          $Exe = Join-Path $Root 'CAMIDAX.exe'
+          $Py = Join-Path $Root '_internal\python314.dll'
+          $PySide = Join-Path $Root '_internal\PySide6'
+          $Shiboken = Join-Path $Root '_internal\shiboken6'
+          $Forge = Join-Path $Root 'runtime\forge\ollama\ollama.exe'
+          $License = Join-Path $Root 'licenses\Ollama-LICENSE.txt'
+
+          foreach ($Path in @($Exe,$Py,$PySide,$Shiboken,$Forge,$License)) {
+            if (-not (Test-Path $Path)) {
+              throw "Required installed runtime missing: $Path"
+            }
+          }
+
+          $V = Get-Item $Exe
+          if ("$($V.VersionInfo.ProductVersion) $($V.VersionInfo.FileVersion)" -notmatch '0\.0\.27') {
+            throw "Installed application is not 0.0.27"
+          }
+
+          "Installed ProductVersion: $($V.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-v2\summary.txt
+          "Installed FileVersion: $($V.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-v2\summary.txt
+          "python314.dll SHA256: $((Get-FileHash $Py -Algorithm SHA256).Hash)" | Add-Content C:\camidax-027-v2\summary.txt
+          "Runtime tree: PASS" | Add-Content C:\camidax-027-v2\summary.txt
+          "Forge Local Engine payload: PASS" | Add-Content C:\camidax-027-v2\summary.txt
+
+      - name: Normal post-upgrade CAMIDAX launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+
+          $Before = @(Get-Process CAMIDAX -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+
+          $P = Start-Process -FilePath $Exe -WorkingDirectory 'C:\Program Files\CAMIDAX' -PassThru
+          Start-Sleep -Seconds 20
+
+          if ($P.HasExited) {
+            throw "CAMIDAX exited during normal post-upgrade launch with code $($P.ExitCode)"
+          }
+
+          $Running = Get-Process -Id $P.Id -ErrorAction SilentlyContinue
+          if (-not $Running) {
+            throw "CAMIDAX process is not running after normal post-upgrade launch"
+          }
+
+          "Normal post-upgrade CAMIDAX launch: PASS" | Add-Content C:\camidax-027-v2\summary.txt
+          "Launch process ID: $($P.Id)" | Add-Content C:\camidax-027-v2\summary.txt
+
+          Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Verify no Python DLL handoff failure evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $Handoff = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\update-handoff.jsonl"
+          if (Test-Path $Handoff) {
+            Copy-Item $Handoff C:\camidax-027-v2\update-handoff.jsonl -Force
+            $Text = Get-Content $Handoff -Raw
+            if ($Text -match 'runtime_validation_failed') {
+              throw "Updater handoff recorded runtime_validation_failed"
+            }
+          }
+
+          "Python DLL handoff failure evidence: NONE" | Add-Content C:\camidax-027-v2\summary.txt
+
+      - name: Final summary
+        if: always()
+        shell: pwsh
+        run: |
+          "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-v2\summary.txt
+          Get-Content C:\camidax-027-v2\summary.txt
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camidax-0.0.26-to-0.0.27-candidate-v2-evidence
+          path: C:\camidax-027-v2
+          if-no-files-found: error
+          retention-days: 7
