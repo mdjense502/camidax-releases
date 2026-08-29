@@ -1,0 +1,114 @@
+name: CAMIDAX 0.0.27 Signed Feed Device Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Prepare
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path C:\camidax-027-probe -Force | Out-Null
+          New-Item -ItemType Directory -Path C:\camidax-027-probe-input -Force | Out-Null
+          "CAMIDAX 0.0.27 signed-feed device probe" | Set-Content C:\camidax-027-probe\summary.txt
+          "Started: $(Get-Date -Format o)" | Add-Content C:\camidax-027-probe\summary.txt
+
+      - name: Download exact public 0.0.26
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Out = 'C:\camidax-027-probe-input\CAMIDAX-0.0.26.exe'
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.26/CAMIDAX-Setup-x64.exe' -OutFile $Out -UseBasicParsing
+          $Hash = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.26 SHA256: $Hash" | Add-Content C:\camidax-027-probe\summary.txt
+          if ($Hash -ne '3003E0082075D29B78F52BD2EFA3FBF071D05D3629412638F0C387EDB29D56A5') { throw '0.0.26 hash mismatch' }
+
+      - name: Install 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-')
+          $P = Start-Process -FilePath 'C:\camidax-027-probe-input\CAMIDAX-0.0.26.exe' -ArgumentList $Args -PassThru -Wait
+          if ($P.ExitCode -ne 0) { throw "0.0.26 install failed with $($P.ExitCode)" }
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          if (-not (Test-Path $Exe)) { throw 'CAMIDAX.exe missing after baseline install' }
+          $V = Get-Item $Exe
+          "Installed ProductVersion: $($V.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-probe\summary.txt
+          if ("$($V.VersionInfo.ProductVersion) $($V.VersionInfo.FileVersion)" -notmatch '0\.0\.26') { throw 'Baseline is not 0.0.26' }
+
+      - name: Trigger real updater while rollout remains paused
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $P = Start-Process -FilePath $Exe -ArgumentList '--background-update' -PassThru
+          if (-not $P.WaitForExit(180000)) {
+            Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+            throw 'Paused-feed updater probe did not return within 3 minutes'
+          }
+          "Updater probe exit code: $($P.ExitCode)" | Add-Content C:\camidax-027-probe\summary.txt
+          Start-Sleep -Seconds 3
+
+      - name: Discover disposable CAMIDAX device identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Roots = @(
+            "$env:LOCALAPPDATA\CAMIDAX",
+            "$env:APPDATA\CAMIDAX",
+            "$env:PROGRAMDATA\CAMIDAX",
+            'C:\Program Files\CAMIDAX\config'
+          )
+          $Out = 'C:\camidax-027-probe\identity-candidates.txt'
+          "Disposable runner identity candidates" | Set-Content $Out
+          foreach ($Root in $Roots) {
+            if (-not (Test-Path $Root)) { continue }
+            "`r`n===== ROOT: $Root =====" | Add-Content $Out
+            Get-ChildItem $Root -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Length -lt 1048576 -and $_.Extension -in @('.json','.jsonl','.txt','.ini','.cfg') } |
+              ForEach-Object {
+                $Path = $_.FullName
+                try {
+                  $Matches = Select-String -Path $Path -Pattern 'device[_-]?id|deviceId|uuid|identity' -CaseSensitive:$false -ErrorAction Stop
+                  if ($Matches) {
+                    "--- $Path ---" | Add-Content $Out
+                    foreach ($M in $Matches) { $M.Line | Add-Content $Out }
+                  }
+                } catch {}
+              }
+          }
+          Get-Content $Out
+
+      - name: Capture updater evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $Candidates = @(
+            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl",
+            "$env:LOCALAPPDATA\CAMIDAX\config\updater-audit.jsonl",
+            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\device-identity-v1.json",
+            "$env:LOCALAPPDATA\CAMIDAX\config\device-identity-v1.json"
+          )
+          foreach ($Path in $Candidates) {
+            if (Test-Path $Path) {
+              Copy-Item $Path (Join-Path 'C:\camidax-027-probe' (Split-Path $Path -Leaf)) -Force
+            }
+          }
+          "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-probe\summary.txt
+          Get-Content C:\camidax-027-probe\summary.txt
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camidax-0.0.27-signed-feed-device-probe
+          path: C:\camidax-027-probe
+          if-no-files-found: error
+          retention-days: 2
