@@ -1,0 +1,168 @@
+name: CAMIDAX 0.0.26 to 0.0.27 Signed Feed Final Qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-signed-feed:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Prepare evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path C:\camidax-027-final -Force | Out-Null
+          New-Item -ItemType Directory -Path C:\camidax-027-final-input -Force | Out-Null
+          "CAMIDAX 0.0.26 -> 0.0.27 signed-feed final qualification" | Set-Content C:\camidax-027-final\summary.txt
+          "Started: $(Get-Date -Format o)" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Download exact public 0.0.26
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Out = 'C:\camidax-027-final-input\CAMIDAX-0.0.26.exe'
+          Invoke-WebRequest -Uri 'https://github.com/mdjense502/camidax-releases/releases/download/camidax-0.0.26/CAMIDAX-Setup-x64.exe' -OutFile $Out -UseBasicParsing
+          $Hash = (Get-FileHash $Out -Algorithm SHA256).Hash
+          "0.0.26 SHA256: $Hash" | Add-Content C:\camidax-027-final\summary.txt
+          if ($Hash -ne '3003E0082075D29B78F52BD2EFA3FBF071D05D3629412638F0C387EDB29D56A5') { throw '0.0.26 hash mismatch' }
+
+      - name: Install exact 0.0.26 baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-')
+          $P = Start-Process -FilePath 'C:\camidax-027-final-input\CAMIDAX-0.0.26.exe' -ArgumentList $Args -PassThru -Wait
+          if ($P.ExitCode -ne 0) { throw "0.0.26 installer exit code $($P.ExitCode)" }
+          Start-Sleep -Seconds 5
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          if (-not (Test-Path $Exe)) { throw 'CAMIDAX.exe missing after 0.0.26 install' }
+          $Item = Get-Item $Exe
+          if ("$($Item.VersionInfo.ProductVersion) $($Item.VersionInfo.FileVersion)" -notmatch '0\.0\.26') { throw 'Installed baseline is not 0.0.26' }
+          "Pre-update ProductVersion: $($Item.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-final\summary.txt
+          "Pre-update FileVersion: $($Item.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Pin disposable device to measured rollout identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $DevicePath = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\device.json"
+          if (-not (Test-Path $DevicePath)) { throw "device identity file not found: $DevicePath" }
+          $Json = Get-Content $DevicePath -Raw | ConvertFrom-Json
+          $Json.uuid = 'aca3551e-338f-4db4-b22a-9be799baaebb'
+          $Json | ConvertTo-Json -Depth 20 | Set-Content $DevicePath -Encoding UTF8
+          $Verify = Get-Content $DevicePath -Raw | ConvertFrom-Json
+          if ($Verify.uuid -ne 'aca3551e-338f-4db4-b22a-9be799baaebb') { throw 'Failed to pin disposable device identity' }
+          "Pinned device UUID: $($Verify.uuid)" | Add-Content C:\camidax-027-final\summary.txt
+          "Expected rollout bucket: 51.1694747824942" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Trigger real packaged updater against signed stable feed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $P = Start-Process -FilePath $Exe -ArgumentList '--background-update' -PassThru
+          if (-not $P.WaitForExit(300000)) {
+            Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+            throw 'Background updater entry point did not return within 5 minutes'
+          }
+          "Updater entry-point exit code: $($P.ExitCode)" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Wait for complete signed updater handoff
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $Py = 'C:\Program Files\CAMIDAX\_internal\python314.dll'
+          $PySide = 'C:\Program Files\CAMIDAX\_internal\PySide6'
+          $Shiboken = 'C:\Program Files\CAMIDAX\_internal\shiboken6'
+          $Engine = 'C:\Program Files\CAMIDAX\runtime\forge\ollama\ollama.exe'
+          $License = 'C:\Program Files\CAMIDAX\licenses\Ollama-LICENSE.txt'
+          $Deadline = (Get-Date).AddMinutes(30)
+          $Complete = $false
+
+          do {
+            Start-Sleep -Seconds 10
+            $VersionReady = $false
+            if (Test-Path $Exe) {
+              try {
+                $Item = Get-Item $Exe
+                $VersionText = "$($Item.VersionInfo.ProductVersion) $($Item.VersionInfo.FileVersion)"
+                Write-Host "Current installed version: $VersionText"
+                $VersionReady = $VersionText -match '0\.0\.27'
+              } catch {
+                Write-Host "Version read unavailable during handoff: $($_.Exception.Message)"
+              }
+            }
+            $RuntimeReady = (Test-Path $Py) -and (Test-Path $PySide) -and (Test-Path $Shiboken) -and (Test-Path $Engine) -and (Test-Path $License)
+            $UpdaterProcesses = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'camidax-update-*' -or $_.ProcessName -like 'CAMIDAX-Setup-x64*' })
+            Write-Host "VersionReady=$VersionReady RuntimeReady=$RuntimeReady UpdaterProcesses=$($UpdaterProcesses.Count)"
+            if ($VersionReady -and $RuntimeReady -and $UpdaterProcesses.Count -eq 0) {
+              $Complete = $true
+              break
+            }
+          } while ((Get-Date) -lt $Deadline)
+
+          if (-not $Complete) { throw 'Signed updater handoff did not fully complete within 30 minutes' }
+
+          $Final = Get-Item $Exe
+          "Post-update ProductVersion: $($Final.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-final\summary.txt
+          "Post-update FileVersion: $($Final.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-final\summary.txt
+          "Post-update CAMIDAX.exe SHA256: $((Get-FileHash $Exe -Algorithm SHA256).Hash)" | Add-Content C:\camidax-027-final\summary.txt
+          "python314.dll SHA256: $((Get-FileHash $Py -Algorithm SHA256).Hash)" | Add-Content C:\camidax-027-final\summary.txt
+          "Forge Local Engine payload: PASS" | Add-Content C:\camidax-027-final\summary.txt
+          "Signed updater handoff complete: PASS" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Normal post-update CAMIDAX launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $P = Start-Process -FilePath $Exe -WorkingDirectory 'C:\Program Files\CAMIDAX' -PassThru
+          Start-Sleep -Seconds 20
+          if ($P.HasExited) { throw "CAMIDAX exited during normal post-update launch with code $($P.ExitCode)" }
+          if (-not (Get-Process -Id $P.Id -ErrorAction SilentlyContinue)) { throw 'CAMIDAX process missing after normal post-update launch' }
+          "Normal post-update CAMIDAX launch: PASS" | Add-Content C:\camidax-027-final\summary.txt
+          "Launch process ID: $($P.Id)" | Add-Content C:\camidax-027-final\summary.txt
+          Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Verify signed updater audit evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Audit = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl"
+          if (-not (Test-Path $Audit)) { throw 'Updater audit log missing' }
+          Copy-Item $Audit C:\camidax-027-final\updater-audit.jsonl -Force
+          $Text = Get-Content $Audit -Raw
+          foreach ($Needle in @('global_check_verified','global_rollout_eligible','global_execute_start')) {
+            if ($Text -notmatch $Needle) { throw "Updater audit missing expected event: $Needle" }
+          }
+          if ($Text -match 'runtime_validation_failed') { throw 'Updater audit contains runtime_validation_failed' }
+          "Signed feed/audit authority path: PASS" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Collect final evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $Candidates = @(
+            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl",
+            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\update-handoff.jsonl",
+            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\device.json"
+          )
+          foreach ($Path in $Candidates) {
+            if (Test-Path $Path) { Copy-Item $Path (Join-Path 'C:\camidax-027-final' (Split-Path $Path -Leaf)) -Force }
+          }
+          "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-final\summary.txt
+          Get-Content C:\camidax-027-final\summary.txt
+
+      - name: Upload final qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camidax-0.0.26-to-0.0.27-signed-feed-final-evidence
+          path: C:\camidax-027-final
+          if-no-files-found: error
+          retention-days: 7
