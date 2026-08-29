@@ -9,7 +9,7 @@ permissions:
 jobs:
   qualify-signed-feed:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - name: Prepare evidence
@@ -45,19 +45,79 @@ jobs:
           "Pre-update ProductVersion: $($Item.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-final\summary.txt
           "Pre-update FileVersion: $($Item.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-final\summary.txt
 
+      - name: Initialize identity and prove paused signed feed blocks update
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Exe = 'C:\Program Files\CAMIDAX\CAMIDAX.exe'
+          $P = Start-Process -FilePath $Exe -ArgumentList '--background-update' -PassThru
+          if (-not $P.WaitForExit(180000)) {
+            Stop-Process -Id $P.Id -Force -ErrorAction SilentlyContinue
+            throw 'Paused-feed initialization did not return within 3 minutes'
+          }
+          Start-Sleep -Seconds 3
+          $Item = Get-Item $Exe
+          if ("$($Item.VersionInfo.ProductVersion) $($Item.VersionInfo.FileVersion)" -notmatch '0\.0\.26') { throw '0.0.26 changed while rollout was expected to be paused' }
+          $Audit = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl"
+          if (-not (Test-Path $Audit)) { throw 'Updater audit missing after paused-feed initialization' }
+          $AuditText = Get-Content $Audit -Raw
+          if ($AuditText -notmatch 'global_check_verified') { throw 'Paused-feed initialization did not verify signed release manifest' }
+          if ($AuditText -notmatch 'global_rollout_paused') { throw 'Signed rollout did not report paused during initialization' }
+          "Paused signed feed block: PASS" | Add-Content C:\camidax-027-final\summary.txt
+
       - name: Pin disposable device to measured rollout identity
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $DevicePath = "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\device.json"
-          if (-not (Test-Path $DevicePath)) { throw "device identity file not found: $DevicePath" }
+          if (-not (Test-Path $DevicePath)) {
+            $Found = Get-ChildItem "$env:LOCALAPPDATA\CAMIDAX" -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Length -lt 1048576 -and $_.Extension -eq '.json' } |
+              ForEach-Object {
+                try {
+                  $Obj = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                  if ($null -ne $Obj.uuid) { $_.FullName }
+                } catch {}
+              } |
+              Select-Object -First 1
+            if ($Found) { $DevicePath = $Found }
+          }
+          if (-not (Test-Path $DevicePath)) { throw 'CAMIDAX device identity JSON was not created after updater initialization' }
           $Json = Get-Content $DevicePath -Raw | ConvertFrom-Json
+          if ($null -eq $Json.uuid) { throw "Identity JSON has no uuid field: $DevicePath" }
+          $Original = "$($Json.uuid)"
           $Json.uuid = 'aca3551e-338f-4db4-b22a-9be799baaebb'
           $Json | ConvertTo-Json -Depth 20 | Set-Content $DevicePath -Encoding UTF8
           $Verify = Get-Content $DevicePath -Raw | ConvertFrom-Json
           if ($Verify.uuid -ne 'aca3551e-338f-4db4-b22a-9be799baaebb') { throw 'Failed to pin disposable device identity' }
+          "Identity path: $DevicePath" | Add-Content C:\camidax-027-final\summary.txt
+          "Original disposable UUID: $Original" | Add-Content C:\camidax-027-final\summary.txt
           "Pinned device UUID: $($Verify.uuid)" | Add-Content C:\camidax-027-final\summary.txt
           "Expected rollout bucket: 51.1694747824942" | Add-Content C:\camidax-027-final\summary.txt
+
+      - name: Wait for signed rollout qualification window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Uri = 'https://raw.githubusercontent.com/mdjense502/camidax-releases/main/channels/stable-v2.rollout.json'
+          $Deadline = (Get-Date).AddMinutes(25)
+          $Ready = $false
+          do {
+            try {
+              $PolicyDoc = Invoke-RestMethod -Uri ($Uri + '?t=' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) -Headers @{ 'Cache-Control'='no-cache' }
+              $P = $PolicyDoc.policy
+              Write-Host "Live rollout: version=$($P.release_version) percentage=$($P.percentage) paused=$($P.paused) revoked=$($P.revoked) id=$($P.rollout_id)"
+              if ($P.release_version -eq '0.0.27' -and -not $P.paused -and -not $P.revoked -and [double]$P.percentage -gt 51.1694747824942 -and $P.rollout_id -eq 'stable-0.0.27') {
+                $Ready = $true
+                break
+              }
+            } catch {
+              Write-Host "Rollout polling warning: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 15
+          } while ((Get-Date) -lt $Deadline)
+          if (-not $Ready) { throw 'Timed out waiting for signed 0.0.27 qualification rollout window' }
+          "Signed rollout qualification window observed: PASS" | Add-Content C:\camidax-027-final\summary.txt
 
       - name: Trigger real packaged updater against signed stable feed
         shell: pwsh
@@ -83,7 +143,6 @@ jobs:
           $License = 'C:\Program Files\CAMIDAX\licenses\Ollama-LICENSE.txt'
           $Deadline = (Get-Date).AddMinutes(30)
           $Complete = $false
-
           do {
             Start-Sleep -Seconds 10
             $VersionReady = $false
@@ -105,9 +164,7 @@ jobs:
               break
             }
           } while ((Get-Date) -lt $Deadline)
-
           if (-not $Complete) { throw 'Signed updater handoff did not fully complete within 30 minutes' }
-
           $Final = Get-Item $Exe
           "Post-update ProductVersion: $($Final.VersionInfo.ProductVersion)" | Add-Content C:\camidax-027-final\summary.txt
           "Post-update FileVersion: $($Final.VersionInfo.FileVersion)" | Add-Content C:\camidax-027-final\summary.txt
@@ -137,7 +194,7 @@ jobs:
           if (-not (Test-Path $Audit)) { throw 'Updater audit log missing' }
           Copy-Item $Audit C:\camidax-027-final\updater-audit.jsonl -Force
           $Text = Get-Content $Audit -Raw
-          foreach ($Needle in @('global_check_verified','global_rollout_eligible','global_execute_start')) {
+          foreach ($Needle in @('global_check_verified','global_rollout_paused','global_rollout_eligible','global_execute_start')) {
             if ($Text -notmatch $Needle) { throw "Updater audit missing expected event: $Needle" }
           }
           if ($Text -match 'runtime_validation_failed') { throw 'Updater audit contains runtime_validation_failed' }
@@ -147,13 +204,11 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $Candidates = @(
-            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\updater-audit.jsonl",
-            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\update-handoff.jsonl",
-            "$env:LOCALAPPDATA\CAMIDAX\OmniCore\config\device.json"
-          )
-          foreach ($Path in $Candidates) {
-            if (Test-Path $Path) { Copy-Item $Path (Join-Path 'C:\camidax-027-final' (Split-Path $Path -Leaf)) -Force }
+          $Root = "$env:LOCALAPPDATA\CAMIDAX"
+          if (Test-Path $Root) {
+            Get-ChildItem $Root -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -in @('updater-audit.jsonl','update-handoff.jsonl','device.json') } |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path 'C:\camidax-027-final' $_.Name) -Force }
           }
           "Finished: $(Get-Date -Format o)" | Add-Content C:\camidax-027-final\summary.txt
           Get-Content C:\camidax-027-final\summary.txt
